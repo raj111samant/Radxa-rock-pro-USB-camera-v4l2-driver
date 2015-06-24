@@ -16,8 +16,9 @@ using namespace cv;
 using namespace std;
 
 
-//uint8_t *buffer;
-void *buffer;
+uint8_t *buffer;
+bool CameraActive = false;
+//void *buffer;
  
 static int xioctl(int fd, int request, void *arg)
 {
@@ -52,7 +53,7 @@ int print_caps(int fd)
                 caps.capabilities);
  
  
-        struct v4l2_cropcap cropcap = {0};
+        struct v4l2_cropcap cropcap = {}; //{0} Gives error in Ubuntu 12.04 Desktop
         cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         if (-1 == xioctl (fd, VIDIOC_CROPCAP, &cropcap))
         {
@@ -92,7 +93,7 @@ int print_caps(int fd)
             return 1;
         }*/
  
-        struct v4l2_format fmt = {0};
+        struct v4l2_format fmt = {}; //{0} Gives error in Ubuntu 12.04 Desktop
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.width = 640;
         fmt.fmt.pix.height = 480;
@@ -143,7 +144,7 @@ int init_mmap(int fd)
         return 1;
     }
  
-    buffer = mmap (NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+    buffer = (uint8_t*)mmap (NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset); // in c++ you need to explicitly typecast void*
     printf("Length: %d\nAddress: %p\n", buf.length, buffer);
     printf("Image Length: %d\n", buf.bytesused);
  
@@ -152,6 +153,7 @@ int init_mmap(int fd)
  
 int capture_image(int fd)
 {
+    fd_set fds;
     struct v4l2_buffer buf = {0};
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
@@ -161,16 +163,17 @@ int capture_image(int fd)
         perror("Query Buffer");
         return 1;
     }
- 
-    if(-1 == xioctl(fd, VIDIOC_STREAMON, &buf.type))
+    if(!CameraActive)
     {
-        perror("Start Capture");
-        return 1;
+       if(-1 == xioctl(fd, VIDIOC_STREAMON, &buf.type))
+       {
+           perror("Start Capture");
+           return 1;
+       }
+       FD_ZERO(&fds);
+       FD_SET(fd, &fds);
+       CameraActive = true;
     }
- 
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
     struct timeval tv = {0};
     tv.tv_sec = 2;
     int r = select(fd+1, &fds, NULL, NULL, &tv);
